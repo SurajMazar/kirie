@@ -10,6 +10,10 @@ It is local-first: no account, no network connections, no watermark. Everything 
 |---|---|
 | ![Panel detection](Docs/Screenshots/comic-panels.jpg) | ![QA gate](Docs/Screenshots/qa-gate.jpg) |
 
+| Lyric Studio | Home |
+|---|---|
+| ![Lyric Studio](Docs/Screenshots/lyric-studio.jpg) | ![Home](Docs/Screenshots/home.jpg) |
+
 ## Status
 
 This repository holds **Phase 1** (the core editor and the Comic Studio basics) plus parts of Phase 2 that the Comic Studio workflow needs (the QA gate, the CLI and an MCP server). The phases after that are designed but not built.
