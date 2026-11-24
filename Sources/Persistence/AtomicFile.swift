@@ -27,7 +27,7 @@ public enum PersistenceError: Error, Equatable, LocalizedError, Sendable {
 /// the destination. A reader therefore always sees either the complete old file or the complete
 /// new one, even if the process is killed mid-save.
 public enum AtomicFile {
-    static let temporaryMarker = ".kirie-tmp-"
+    public static let temporaryMarker = ".kirie-tmp-"
 
     public static func write(_ data: Data, to url: URL) throws {
         let directory = url.deletingLastPathComponent()

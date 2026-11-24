@@ -38,6 +38,6 @@ let package = Package(
         .testTarget(name: "MediaServicesTests", dependencies: ["MediaServices", "KirieServices"], swiftSettings: v5),
         .testTarget(name: "RenderEngineTests", dependencies: ["RenderEngine", "KirieServices"], swiftSettings: v5),
         .testTarget(name: "ComicStudioTests", dependencies: ["ComicStudio", "KirieServices"], swiftSettings: v5),
-        .testTarget(name: "KirieServicesTests", dependencies: ["KirieServices"], swiftSettings: v5),
+        .testTarget(name: "KirieServicesTests", dependencies: ["KirieServices", "ComicStudio"], swiftSettings: v5),
     ]
 )
