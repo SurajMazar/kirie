@@ -159,7 +159,16 @@ public enum SampleMedia {
         let total = Int((seconds * Double(fps)).rounded())
         let space = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         for frame in 0..<total {
-            while !input.isReadyForMoreMediaData { try await Task.sleep(nanoseconds: 2_000_000) }
+            var waited = 0
+            while !input.isReadyForMoreMediaData {
+                // A failed or stalled encoder must surface as an error, never as an endless wait.
+                guard writer.status == .writing, waited < 15_000 else {
+                    writer.cancelWriting()
+                    throw writer.error ?? MediaError.decodeFailed(url.lastPathComponent, detail: "The video encoder stopped accepting frames.")
+                }
+                try await Task.sleep(nanoseconds: 2_000_000)
+                waited += 1
+            }
             guard let pool = adaptor.pixelBufferPool else { throw MediaError.decodeFailed(url.lastPathComponent, detail: "No pixel buffer pool.") }
             var buffer: CVPixelBuffer?
             CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)

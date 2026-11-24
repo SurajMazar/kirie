@@ -32,7 +32,7 @@ jobs:
         run: swift build
 
       - name: Test
-        run: Scripts/test.sh
+        run: Scripts/ci-test.sh 420
 
       - name: Forced-termination recovery
         run: Scripts/crash-recovery-test.sh 15

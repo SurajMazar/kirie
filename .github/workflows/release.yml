@@ -33,7 +33,7 @@ jobs:
           swift --version
 
       - name: Test
-        run: Scripts/test.sh
+        run: Scripts/ci-test.sh 420
 
       - name: Import the signing certificate
         if: env.MACOS_CERTIFICATE_P12 != '' && env.MACOS_SIGN_IDENTITY != ''

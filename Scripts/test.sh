@@ -1,6 +1,7 @@
 #!/bin/bash
 # Runs the test suite. Works with full Xcode or with only the Command Line Tools installed.
 # Usage: Scripts/test.sh [swift test arguments…]
+#        Scripts/test.sh --build-only     compile the tests without running them
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -15,4 +16,7 @@ if [[ "$DEVELOPER_DIR_PATH" == *CommandLineTools* ]]; then
          -Xlinker "-F$FRAMEWORKS" -Xlinker -rpath -Xlinker "$FRAMEWORKS" -Xlinker -rpath -Xlinker "$LIBS")
 fi
 
+if [ "${1:-}" = "--build-only" ]; then
+  exec swift build --build-tests ${FLAGS[@]+"${FLAGS[@]}"}
+fi
 exec swift test ${FLAGS[@]+"${FLAGS[@]}"} "$@"

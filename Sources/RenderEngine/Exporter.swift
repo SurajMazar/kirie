@@ -451,7 +451,17 @@ public enum Exporter {
         }
         writer.startSession(atSourceTime: .zero)
         while let sample = output.copyNextSampleBuffer() {
-            while !input.isReadyForMoreMediaData { try await Task.sleep(nanoseconds: 1_000_000) }
+            var waited = 0
+            while !input.isReadyForMoreMediaData {
+                guard writer.status == .writing, waited < 30_000 else {
+                    reader.cancelReading()
+                    writer.cancelWriting()
+                    try? FileManager.default.removeItem(at: partial)
+                    throw RenderError.failed(writer.error?.localizedDescription ?? "The audio encoder stopped accepting data.")
+                }
+                try await Task.sleep(nanoseconds: 1_000_000)
+                waited += 1
+            }
             guard input.append(sample) else { break }
         }
         input.markAsFinished()
