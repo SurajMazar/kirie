@@ -457,17 +457,20 @@ struct CommandApplier {
                 t = project.sequences[s].tracks.count - 1
             }
         }
-        let track = project.sequences[s].tracks[t]
-        if track.locked { throw EditError.trackLocked(track.name) }
-        guard track.kind.accepts(clip.kind) else {
-            throw EditError.invalid("A \(clip.kind.rawValue) clip cannot go on the \(track.name) track.")
+        // Read what is needed without holding a copy of the track: a copy would force the whole clip
+        // array to be duplicated on the insert below.
+        let kind = project.sequences[s].tracks[t].kind
+        let name = project.sequences[s].tracks[t].name
+        if project.sequences[s].tracks[t].locked { throw EditError.trackLocked(name) }
+        guard kind.accepts(clip.kind) else {
+            throw EditError.invalid("A \(clip.kind.rawValue) clip cannot go on the \(name) track.")
         }
-        if track.kind.isMagnetic {
-            let at = max(0, min(index ?? track.clips.count, track.clips.count))
-            project.sequences[s].tracks[t].clips.insert(clip, at: at)
+        if kind.isMagnetic {
+            let count = project.sequences[s].tracks[t].clips.count
+            project.sequences[s].tracks[t].clips.insert(clip, at: max(0, min(index ?? count, count)))
         } else {
-            if track.hasOverlap(clip.range) {
-                throw EditError.overlap("There is already a clip at that position on the \(track.name) track.")
+            if project.sequences[s].tracks[t].hasOverlap(clip.range) {
+                throw EditError.overlap("There is already a clip at that position on the \(name) track.")
             }
             project.sequences[s].tracks[t].clips.append(clip)
         }

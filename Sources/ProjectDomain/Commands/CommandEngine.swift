@@ -44,9 +44,13 @@ public struct CommandEngine: Sendable {
         guard !commands.isEmpty else { throw EditError.invalid("No command to run.") }
         var applier = CommandApplier(project: project)
         var summaries: [String] = []
-        for command in commands {
+        for (index, command) in commands.enumerated() {
             summaries.append(try applier.apply(command))
-            applier.settle()
+            // Re-laying out the timeline costs time proportional to its size, so in a batch it is
+            // skipped when the next command does not read clip positions (for example a run of
+            // imports or appends). The final state is always settled.
+            let next = index + 1 < commands.count ? commands[index + 1] : nil
+            if next?.readsLayout ?? true { applier.settle() }
         }
         var next = applier.project
         next.modifiedAt = timestamp.roundedToMilliseconds

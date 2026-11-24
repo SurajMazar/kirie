@@ -31,7 +31,7 @@ struct Arguments {
     var flags: Set<String> = []
 
     static let booleanFlags: Set<String> = ["dry-run", "silent", "reduce-motion", "vary", "purge", "pretty", "compact", "right-to-left",
-                                            "no-full-strip", "confirm", "help", "manga"]
+                                            "no-full-strip", "confirm", "help", "manga", "audio-only"]
 
     init(_ raw: [String]) throws {
         var index = 0
@@ -91,6 +91,7 @@ enum CommandLineTool {
     Export
       kirie presets                            Built-in export presets
       kirie export <project> [--preset ID] [--out FILE] [--sequence S] [--from SEC] [--to SEC] [--silent] [--reduce-motion]
+      kirie export <project> --audio-only [--out FILE.wav]   Mixed audio as a 16-bit WAV
 
     Comic Studio
       kirie comic detect <image> [--manga]     Detect panels in an image
@@ -324,6 +325,14 @@ enum CommandLineTool {
             return .object(["project": .string(demo.projectURL.path), "media": .string(demo.mediaFolder.path),
                             "timelines": .array(demo.sequences.map { .string($0) })])
 
+        case "icon":
+            // Build tooling: draws the app icon used by Scripts/build-app.sh.
+            let out = fileURL(try arguments.require(1, "the output PNG path"))
+            guard let image = AppIcon.render(), Thumbnailer.write(image, to: out) else {
+                throw CLIError(code: .failure, identifier: "error", message: "The icon could not be written.")
+            }
+            return .object(["written": .string(out.path)])
+
         case "mcp":
             let session = try open(try arguments.require(1, "the project path"))
             await MCPServer(session: session).run()
@@ -458,6 +467,16 @@ enum CommandLineTool {
         }
         let destination = arguments.options["out"].map(fileURL) ?? session.defaultExportURL(preset: preset, name: "\(session.project.name) – \(target.name)")
         let options = RenderOptions(reduceMotion: arguments.flags.contains("reduce-motion"), silent: arguments.flags.contains("silent"))
+        if arguments.flags.contains("audio-only") {
+            // The mixed audio of the timeline as a WAV. Commercial audio marked as unlicensed is left out here too.
+            let lock = session.exportLock()
+            guard !lock.isLocked else { throw RenderError.exportLocked(lock.reasons) }
+            let built = try await session.buildComposition(sequenceID: target.id, options: RenderOptions(excludeUnlicensedAudio: true))
+            let out = arguments.options["out"].map(fileURL) ?? session.package.exportsURL.appendingPathComponent("\(session.project.name) – \(target.name).wav")
+            try FileManager.default.createDirectory(at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try await Exporter.exportAudio(built: built, to: out)
+            return .object(["outputPath": .string(out.path), "format": .string("wav"), "withheldAudio": .array(built.withheldAudio.map { .string($0.name) })])
+        }
 
         // Ctrl-C cancels cleanly: the partial file is removed and the exit code is 130.
         let cancellation = ExportCancellation()

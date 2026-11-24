@@ -86,6 +86,14 @@ public enum EditCommand: Codable, Sendable, Equatable {
     // Comic Studio
     case comic(command: ComicCommand)
 
+    /// Whether applying this command depends on other clips already being laid out.
+    var readsLayout: Bool {
+        switch self {
+        case .importAssets, .updateAssetInfo, .relinkAsset, .renameProject, .setExportPreset, .addClip, .insertClip, .addMarkers, .comic: false
+        default: true
+        }
+    }
+
     /// Stable machine name (the JSON key).
     public var name: String {
         Mirror(reflecting: self).children.first?.label ?? "unknown"
