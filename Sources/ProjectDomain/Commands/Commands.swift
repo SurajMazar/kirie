@@ -84,7 +84,7 @@ public enum EditCommand: Codable, Sendable, Equatable {
                          animation: TextAnimation)
 
     // Comic Studio
-    case comic(ComicCommand)
+    case comic(command: ComicCommand)
 
     /// Stable machine name (the JSON key).
     public var name: String {

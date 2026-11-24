@@ -33,9 +33,9 @@ extension ProjectSession {
         var commands: [EditCommand] = []
         if engine.project.comic == nil {
             let base = (asset.name as NSString).deletingPathExtension
-            commands.append(.comic(.enable(number: number ?? 1, slug: slug ?? base)))
+            commands.append(.comic(command: .enable(number: number ?? 1, slug: slug ?? base)))
         }
-        commands.append(.comic(.addStrip(strip: strip)))
+        commands.append(.comic(command: .addStrip(strip: strip)))
         try execute(commands, label: "Import strip \(asset.name)")
         return strip
     }
@@ -47,7 +47,7 @@ extension ProjectSession {
         var options = PanelDetector.Options()
         options.rightToLeft = rightToLeft
         let analysis = SubjectFinder.analyse(image, options: options)
-        try execute(.comic(.setPanels(stripID: stripID, panels: analysis.panels, paperColor: analysis.paper)))
+        try execute(.comic(command: .setPanels(stripID: stripID, panels: analysis.panels, paperColor: analysis.paper)))
         return analysis.panels.count
     }
 
@@ -60,7 +60,7 @@ extension ProjectSession {
             updated.subject = SubjectFinder.contentBounds(in: image, panel: panel.rect)
             return updated
         }
-        if panels != strip.panels { try execute(.comic(.setPanels(stripID: stripID, panels: panels, paperColor: nil))) }
+        if panels != strip.panels { try execute(.comic(command: .setPanels(stripID: stripID, panels: panels, paperColor: nil))) }
     }
 
     /// Framing plan (fit, push-in, crop-safety verdict) for each panel on the project canvas.
@@ -84,7 +84,7 @@ extension ProjectSession {
         let imageHash = try FileHasher.sha256(of: url)
         let approval = StripApproval(imageHash: imageHash, qaHash: QAGate.stateHash(strip: strip, checklist: comic.checklist),
                                      approvedBy: approvedBy.isEmpty ? NSUserName() : approvedBy)
-        try execute(.comic(.approveStrip(stripID: stripID, approval: approval)))
+        try execute(.comic(command: .approveStrip(stripID: stripID, approval: approval)))
     }
 
     /// Keeps a rejected image inside the project, with the failed checks in its file name.
@@ -100,7 +100,7 @@ extension ProjectSession {
         let destination = directory.appendingPathComponent(name)
         if !FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.copyItem(at: imageURL, to: destination) }
         let attempt = RejectedAttempt(fileName: name, imageHash: hash, failedChecks: checks, note: note)
-        try execute(.comic(.recordRejection(stripID: stripID, attempt: attempt)))
+        try execute(.comic(command: .recordRejection(stripID: stripID, attempt: attempt)))
         return attempt
     }
 

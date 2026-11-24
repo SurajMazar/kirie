@@ -8,7 +8,7 @@ struct CodecTests {
         var (engine, assets) = Fixture.stocked()
         let a = try Fixture.add(&engine, assets[0])
         try engine.execute(.setKeyframe(clipID: a, keyframe: Keyframe(property: .scale, time: seconds(1), value: 1.2)))
-        try engine.execute(.comic(.enable(number: 12, slug: "Rainy day")))
+        try engine.execute(.comic(command: .enable(number: 12, slug: "Rainy day")))
         let first = try ProjectCodec.encode(engine.project)
         let second = try ProjectCodec.encode(engine.project)
         #expect(first == second, "encoding is deterministic")

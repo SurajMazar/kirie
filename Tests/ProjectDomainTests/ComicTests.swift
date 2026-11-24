@@ -12,22 +12,22 @@ struct ComicTests {
         var engine = CommandEngine(project: Fixture.reel())
         let strip = Fixture.image("strip.png", width: 1024, height: 1536)
         try engine.execute(.importAssets(assets: [strip]))
-        try engine.execute(.comic(.enable(number: 42, slug: "Beach Day!")))
+        try engine.execute(.comic(command: .enable(number: 42, slug: "Beach Day!")))
         let panels = [ComicPanel(rect: UnitRect(x: 0.03, y: 0.02, width: 0.94, height: 0.30)),
                       ComicPanel(rect: UnitRect(x: 0.03, y: 0.34, width: 0.45, height: 0.30)),
                       ComicPanel(rect: UnitRect(x: 0.52, y: 0.34, width: 0.45, height: 0.64))]
         let model = ComicStrip(assetID: strip.id, panels: panels)
-        try engine.execute(.comic(.addStrip(strip: model)))
+        try engine.execute(.comic(command: .addStrip(strip: model)))
         return (engine, model, strip)
     }
 
     static func passEverything(_ engine: inout CommandEngine, _ strip: ComicStrip) throws {
         for (index, panel) in strip.panels.enumerated() {
-            try engine.execute(.comic(.setPanelReview(stripID: strip.id, panelID: panel.id,
+            try engine.execute(.comic(command: .setPanelReview(stripID: strip.id, panelID: panel.id,
                                                       review: PanelReview(status: .pass, strangerNote: "Two friends share an umbrella, panel \(index + 1)."))))
         }
         for item in QAChecklist.comicDefault.items {
-            try engine.execute(.comic(.setCheck(stripID: strip.id, itemID: item.id, result: CheckResult(status: .pass, reason: "Checked at full size."))))
+            try engine.execute(.comic(command: .setCheck(stripID: strip.id, itemID: item.id, result: CheckResult(status: .pass, reason: "Checked at full size."))))
         }
     }
 
@@ -36,7 +36,7 @@ struct ComicTests {
         let current = try #require(comic.strip(strip.id))
         let approval = StripApproval(imageHash: imageHash, qaHash: QAGate.stateHash(strip: current, checklist: comic.checklist),
                                      approvedBy: "tester", approvedAt: Date(timeIntervalSince1970: 1_800_000_500))
-        try engine.execute(.comic(.approveStrip(stripID: strip.id, approval: approval)))
+        try engine.execute(.comic(command: .approveStrip(stripID: strip.id, approval: approval)))
     }
 
     @Test func folderNamesFollowTheNumberedConvention() throws {
@@ -54,10 +54,10 @@ struct ComicTests {
 
         try Self.passEverything(&engine, strip)
         // A soft-pass word in a note blocks approval.
-        try engine.execute(.comic(.setPanelReview(stripID: strip.id, panelID: strip.panels[0].id,
+        try engine.execute(.comic(command: .setPanelReview(stripID: strip.id, panelID: strip.panels[0].id,
                                                   review: PanelReview(status: .pass, strangerNote: "Looks acceptable, mostly."))))
         #expect(throws: EditError.self) { try Self.approve(&engine, strip, imageHash: Self.hashA) }
-        try engine.execute(.comic(.setPanelReview(stripID: strip.id, panelID: strip.panels[0].id,
+        try engine.execute(.comic(command: .setPanelReview(stripID: strip.id, panelID: strip.panels[0].id,
                                                   review: PanelReview(status: .pass, strangerNote: "A girl hands a boy an umbrella."))))
         try Self.approve(&engine, strip, imageHash: Self.hashA)
         #expect(engine.project.comic?.strips[0].approval?.approvedBy == "tester")
@@ -89,16 +89,16 @@ struct ComicTests {
         panels[0].rect = UnitRect(x: 0.05, y: 0.02, width: 0.9, height: 0.3)
         let current = try #require(engine.project.comic?.strip(strip.id))
         panels = zip(panels, current.panels).map { edited, live in var p = live; p.rect = edited.rect; return p }
-        try engine.execute(.comic(.setPanels(stripID: strip.id, panels: panels, paperColor: nil)))
+        try engine.execute(.comic(command: .setPanels(stripID: strip.id, panels: panels, paperColor: nil)))
         lock = QAGate.exportLock(project: engine.project, imageHashes: [asset.id: Self.hashA])
         #expect(lock.strips.first?.state == .staleReview)
 
         // Re-approving the changed state unlocks again; turning the requirement off unlocks everything.
         try Self.approve(&engine, strip, imageHash: Self.hashA)
         #expect(!QAGate.exportLock(project: engine.project, imageHashes: [asset.id: Self.hashA]).isLocked)
-        try engine.execute(.comic(.revokeApproval(stripID: strip.id)))
+        try engine.execute(.comic(command: .revokeApproval(stripID: strip.id)))
         #expect(QAGate.exportLock(project: engine.project, imageHashes: [asset.id: Self.hashA]).isLocked)
-        try engine.execute(.comic(.setRequireQA(required: false)))
+        try engine.execute(.comic(command: .setRequireQA(required: false)))
         #expect(!QAGate.exportLock(project: engine.project, imageHashes: [:]).isLocked)
     }
 
@@ -106,7 +106,7 @@ struct ComicTests {
         var (engine, strip, _) = try Self.comic()
         try Self.passEverything(&engine, strip)
         let stale = StripApproval(imageHash: Self.hashA, qaHash: Self.hashB, approvedBy: "tester")
-        #expect(throws: EditError.self) { try engine.execute(.comic(.approveStrip(stripID: strip.id, approval: stale))) }
+        #expect(throws: EditError.self) { try engine.execute(.comic(command: .approveStrip(stripID: strip.id, approval: stale))) }
     }
 
     @Test func framingNeverCutsOffTheSubject() {
@@ -156,7 +156,7 @@ struct ComicTests {
         #expect(ProjectValidator.validate(copy.project).isEmpty)
 
         // Varied transitions and the end card.
-        try copy.execute(.comic(.setEndCard(endCard: EndCard(enabled: true, text: "@mycomics"))))
+        try copy.execute(.comic(command: .setEndCard(endCard: EndCard(enabled: true, text: "@mycomics"))))
         let varied = try ComicBuilder.stripReel(project: copy.project, stripID: strip.id,
                                                 options: StripReelOptions(varyTransitions: true), sequenceID: UUID(), name: "Varied")
         let clips = try #require(varied.mainTrack).clips
@@ -173,7 +173,7 @@ struct ComicTests {
         let frames = (1...4).map { Fixture.image("frame\($0).png") }
         let song = Fixture.audio("owned.m4a", duration: 12)
         try engine.execute(.importAssets(assets: frames + [song]))
-        try engine.execute(.comic(.enable(number: 1, slug: "golden hour")))
+        try engine.execute(.comic(command: .enable(number: 1, slug: "golden hour")))
         let json = Data("[{\"line\":\"frame1\",\"start\":0,\"end\":2.4},{\"line\":\"frame2\",\"start\":2.4,\"end\":4.8},{\"line\":\"FRAME3.png\",\"start\":4.8,\"end\":6},{\"line\":\"frame4\",\"start\":6,\"end\":9.5}]".utf8)
         var plan = MontagePlan(frames: try ComicBuilder.montageFrames(fromTimesJSON: json, assets: engine.project.assets), audioAssetID: song.id)
         plan.frames[1].section = .verse
@@ -181,7 +181,7 @@ struct ComicTests {
         plan.frames[2].section = .chorus
         plan.frames[3].section = .final
         plan.frames[3].transition = ComicBuilder.defaultTransition(for: .final, rate: .fps30)
-        try engine.execute(.comic(.setMontage(plan: plan)))
+        try engine.execute(.comic(command: .setMontage(plan: plan)))
         let sequence = try ComicBuilder.montage(project: engine.project, sequenceID: UUID(), name: "Montage")
         let clips = try #require(sequence.mainTrack).clips
         #expect(clips.map(\.start) == [seconds(0), seconds(2.4), seconds(4.8), seconds(6)])
@@ -201,7 +201,7 @@ struct ComicTests {
         let art = (1...2).map { Fixture.image("line\($0).png") }
         let song = Fixture.audio("owned.m4a", duration: 10)
         try engine.execute(.importAssets(assets: art + [song]))
-        try engine.execute(.comic(.enable(number: 2, slug: "lyric")))
+        try engine.execute(.comic(command: .enable(number: 2, slug: "lyric")))
         let lines = [
             LyricLine(start: seconds(1), end: seconds(4), text: "you are my *sunshine*", style: .verse,
                       shots: [LyricShot(at: seconds(1), assetID: art[0].id)]),
@@ -209,7 +209,7 @@ struct ComicTests {
                       shots: [LyricShot(at: seconds(4), assetID: art[1].id, cut: .flash),
                               LyricShot(at: seconds(6), assetID: art[1].id, zoom: 1.6, focus: UnitPoint2D(x: 0.5, y: 0.7), cut: .shake)]),
         ]
-        try engine.execute(.comic(.setLyricEdit(edit: LyricEdit(audioAssetID: song.id, lines: lines))))
+        try engine.execute(.comic(command: .setLyricEdit(edit: LyricEdit(audioAssetID: song.id, lines: lines))))
         let sequence = try ComicBuilder.lyricEdit(project: engine.project, sequenceID: UUID(), name: "Lyric edit")
         let pictures = try #require(sequence.mainTrack).clips
         #expect(pictures.count == 3)

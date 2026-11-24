@@ -261,7 +261,7 @@ struct HistoryTests {
         _ = try Fixture.add(&engine, assets[4]); states.append(engine.project)
         try engine.execute(.detachAudio(clipID: b, newClipID: UUID(), newTrackID: UUID())); states.append(engine.project)
         try engine.execute(.removeClips(clipIDs: [a], ripple: true)); states.append(engine.project)
-        try engine.execute(.comic(.enable(number: 7, slug: "Beach day"))); states.append(engine.project)
+        try engine.execute(.comic(command: .enable(number: 7, slug: "Beach day"))); states.append(engine.project)
         try engine.execute(.renameProject(name: "Renamed")); states.append(engine.project)
 
         func same(_ x: Project, _ y: Project) -> Bool {

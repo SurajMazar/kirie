@@ -80,17 +80,17 @@ public enum DemoBuilder {
 
         // 2. Comic Studio: a strip, reviewed and approved, and its panel-by-panel reel.
         let strip = try session.addStrip(assetID: try asset("Strip.png").id, number: 1, slug: "demo strip")
-        try session.execute(.comic(.setSynopsis(synopsis: Synopsis(
+        try session.execute(.comic(command: .setSynopsis(synopsis: Synopsis(
             premise: "Two friends plan a quiet afternoon.", panelLines: ["A plan is made.", "The snacks arrive.", "So does the cat.", "Nobody gets a snack."],
             punchline: "The cat wins.", cast: "Two friends and a cat"))), actor: .system)
         for (index, panel) in strip.panels.enumerated() {
             let review = PanelReview(status: .pass, strangerNote: "Demo panel \(index + 1): one figure on a flat tinted background, numbered in the corner.")
-            try session.execute(.comic(.setPanelReview(stripID: strip.id, panelID: panel.id, review: review)), actor: .system)
+            try session.execute(.comic(command: .setPanelReview(stripID: strip.id, panelID: panel.id, review: review)), actor: .system)
         }
         for item in session.project.comic?.checklist.items ?? [] {
-            try session.execute(.comic(.setCheck(stripID: strip.id, itemID: item.id, result: CheckResult(status: .pass, reason: "Generated demo strip."))), actor: .system)
+            try session.execute(.comic(command: .setCheck(stripID: strip.id, itemID: item.id, result: CheckResult(status: .pass, reason: "Generated demo strip."))), actor: .system)
         }
-        try session.execute(.comic(.setEndCard(endCard: EndCard(enabled: true, text: "made with kirie"))), actor: .system)
+        try session.execute(.comic(command: .setEndCard(endCard: EndCard(enabled: true, text: "made with kirie"))), actor: .system)
         try session.approveStrip(stripID: strip.id, approvedBy: "Kirie demo")
         try session.buildStripReel(stripID: strip.id, options: StripReelOptions(varyTransitions: true))
 
@@ -105,7 +105,7 @@ public enum DemoBuilder {
                       shots: [LyricShot(at: RationalTime(seconds: 8.25), assetID: art[2].id, cut: .flash),
                               LyricShot(at: RationalTime(seconds: 10.25), assetID: art[2].id, zoom: 1.5, focus: UnitPoint2D(x: 0.5, y: 0.62), cut: .shake)]),
         ]
-        try session.execute(.comic(.setLyricEdit(edit: LyricEdit(audioAssetID: beat.id, lines: lines))), actor: .system)
+        try session.execute(.comic(command: .setLyricEdit(edit: LyricEdit(audioAssetID: beat.id, lines: lines))), actor: .system)
         try session.buildLyricEdit()
 
         try session.execute(.setActiveSequence(sequenceID: reelID), actor: .system)

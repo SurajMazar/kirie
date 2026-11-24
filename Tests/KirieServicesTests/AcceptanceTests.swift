@@ -181,7 +181,7 @@ struct AcceptanceTests {
         var panels = strip.panels
         panels[0].rect = UnitRect(x: 0.045, y: 0.032, width: 0.91, height: 0.266)
         panels.swapAt(1, 2)
-        try session.execute(.comic(.setPanels(stripID: strip.id, panels: panels, paperColor: nil)))
+        try session.execute(.comic(command: .setPanels(stripID: strip.id, panels: panels, paperColor: nil)))
         try session.refreshSubjects(stripID: strip.id)
         #expect(session.project.comic?.strips[0].panels[1].id == strip.panels[2].id)
 
@@ -212,11 +212,11 @@ struct AcceptanceTests {
 
         let current = try #require(session.project.comic?.strips.first)
         for (index, panel) in current.panels.enumerated() {
-            try session.execute(.comic(.setPanelReview(stripID: strip.id, panelID: panel.id,
+            try session.execute(.comic(command: .setPanelReview(stripID: strip.id, panelID: panel.id,
                                                        review: PanelReview(status: .pass, strangerNote: "A figure stands on a tinted background, panel \(index + 1)."))))
         }
         for item in session.project.comic?.checklist.items ?? [] {
-            try session.execute(.comic(.setCheck(stripID: strip.id, itemID: item.id, result: CheckResult(status: .pass, reason: "Checked at full size."))))
+            try session.execute(.comic(command: .setCheck(stripID: strip.id, itemID: item.id, result: CheckResult(status: .pass, reason: "Checked at full size."))))
         }
         try session.approveStrip(stripID: strip.id, approvedBy: "reviewer")
         let approval = try #require(session.project.comic?.strips.first?.approval)
@@ -272,7 +272,7 @@ struct AcceptanceTests {
         let song = try #require(session.project.assets.first { $0.kind == .audio })
         try session.execute(.updateAssetInfo(assetID: song.id, name: nil, rights: RightsInfo(status: .owned), favourite: nil, rating: nil, keywords: nil, bpm: nil))
         let art = session.project.assets.filter { $0.kind == .image }
-        try session.execute(.comic(.enable(number: 15, slug: "lyric")))
+        try session.execute(.comic(command: .enable(number: 15, slug: "lyric")))
 
         // Lines with markup; the second line's words were tapped in by hand.
         let lines = [
@@ -280,7 +280,7 @@ struct AcceptanceTests {
             LyricLine(start: s(4), end: s(7), text: "tap / *tap*", style: .chorus, shots: [LyricShot(at: s(4), assetID: art[1].id)],
                       wordTimes: [s(4.5), s(6)], hold: 0.3),
         ]
-        try session.execute(.comic(.setLyricEdit(edit: LyricEdit(audioAssetID: song.id, lines: lines, letterJitter: false, chorusFlash: false, punchIn: false))))
+        try session.execute(.comic(command: .setLyricEdit(edit: LyricEdit(audioAssetID: song.id, lines: lines, letterJitter: false, chorusFlash: false, punchIn: false))))
         let sequence = try session.buildLyricEdit()
         let lettering = try #require(sequence.tracks.first { $0.name == "Lyrics" }).clips
         // Line 1: three words spread across 3 s minus a 0.5 s hold. Line 2: exactly the tapped times.
