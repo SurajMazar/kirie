@@ -3,12 +3,40 @@ import Accelerate
 import Foundation
 import ProjectDomain
 
+/// Runs blocking media work on a GCD thread.
+///
+/// AVFoundation's synchronous calls (`copyNextSampleBuffer` and friends) wait for work that
+/// AVFoundation itself schedules on Swift's cooperative thread pool. If they are called from async
+/// code they occupy pool threads, and enough of them at once (more than the Mac has cores, or even a
+/// handful on a small machine) leave no thread free to produce the data they are waiting for: a
+/// deadlock. Blocking calls therefore always go through here.
+public enum BlockingWork {
+    private static let queue = DispatchQueue(label: "kirie.blocking-media", qos: .userInitiated, attributes: .concurrent)
+
+    public static func run<T>(_ work: @escaping () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async { continuation.resume(with: Result { try work() }) }
+        }
+    }
+}
+
+/// A flag another thread can set to ask blocking work to stop.
+public final class CancelFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+    public init() {}
+    public func cancel() { lock.lock(); cancelled = true; lock.unlock() }
+    public var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
+}
+
 /// Decodes any audio (or the audio of a video) to mono Float32 PCM.
 public enum AudioDecoder {
-    /// Streams decoded samples to `consume` in chunks. Returns the number of samples delivered.
+    /// Streams decoded samples to `consume` in chunks, off the cooperative pool. `consume` is called
+    /// on a background thread, one chunk at a time, and has returned for the last time before this
+    /// function returns. Returns the number of samples delivered.
     @discardableResult
     public static func stream(_ url: URL, sampleRate: Double, maxSeconds: Double = .infinity,
-                              consume: (UnsafeBufferPointer<Float>) -> Void) async throws -> Int {
+                              consume: @escaping (UnsafeBufferPointer<Float>) -> Void) async throws -> Int {
         let name = url.lastPathComponent
         let asset = AVURLAsset(url: url)
         let tracks: [AVAssetTrack]
@@ -18,51 +46,64 @@ public enum AudioDecoder {
             throw MediaError.decodeFailed(name, detail: error.localizedDescription)
         }
         guard !tracks.isEmpty else { throw MediaError.empty(name) }
-        let reader: AVAssetReader
-        do {
-            reader = try AVAssetReader(asset: asset)
-        } catch {
-            throw MediaError.decodeFailed(name, detail: error.localizedDescription)
-        }
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMIsFloatKey: true, AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsNonInterleaved: false, AVLinearPCMIsBigEndianKey: false, AVNumberOfChannelsKey: 1,
-            AVSampleRateKey: sampleRate,
-        ]
-        let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: settings)
-        output.alwaysCopiesSampleData = false
-        guard reader.canAdd(output) else { throw MediaError.decodeFailed(name, detail: "The audio format cannot be converted.") }
-        reader.add(output)
-        guard reader.startReading() else {
-            throw MediaError.decodeFailed(name, detail: reader.error?.localizedDescription ?? "Reading could not start.")
-        }
-        let limit = maxSeconds.isFinite ? Int(maxSeconds * sampleRate) : Int.max
-        var delivered = 0
-        while delivered < limit, let buffer = output.copyNextSampleBuffer() {
-            try Task.checkCancellation()
-            guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
-            var length = 0
-            var pointer: UnsafeMutablePointer<Int8>?
-            guard CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &pointer) == noErr,
-                  let pointer else { continue }
-            let count = min(length / MemoryLayout<Float>.size, limit - delivered)
-            pointer.withMemoryRebound(to: Float.self, capacity: count) { floats in
-                consume(UnsafeBufferPointer(start: floats, count: count))
+        let flag = CancelFlag()
+        return try await withTaskCancellationHandler {
+            try await BlockingWork.run {
+                let reader: AVAssetReader
+                do {
+                    reader = try AVAssetReader(asset: asset)
+                } catch {
+                    throw MediaError.decodeFailed(name, detail: error.localizedDescription)
+                }
+                let settings: [String: Any] = [
+                    AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMIsFloatKey: true, AVLinearPCMBitDepthKey: 32,
+                    AVLinearPCMIsNonInterleaved: false, AVLinearPCMIsBigEndianKey: false, AVNumberOfChannelsKey: 1,
+                    AVSampleRateKey: sampleRate,
+                ]
+                let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: settings)
+                output.alwaysCopiesSampleData = false
+                guard reader.canAdd(output) else { throw MediaError.decodeFailed(name, detail: "The audio format cannot be converted.") }
+                reader.add(output)
+                guard reader.startReading() else {
+                    throw MediaError.decodeFailed(name, detail: reader.error?.localizedDescription ?? "Reading could not start.")
+                }
+                let limit = maxSeconds.isFinite ? Int(maxSeconds * sampleRate) : Int.max
+                var delivered = 0
+                while delivered < limit, let buffer = output.copyNextSampleBuffer() {
+                    if flag.isCancelled {
+                        reader.cancelReading()
+                        throw CancellationError()
+                    }
+                    guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
+                    var length = 0
+                    var pointer: UnsafeMutablePointer<Int8>?
+                    guard CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &pointer) == noErr,
+                          let pointer else { continue }
+                    let count = min(length / MemoryLayout<Float>.size, limit - delivered)
+                    pointer.withMemoryRebound(to: Float.self, capacity: count) { floats in
+                        consume(UnsafeBufferPointer(start: floats, count: count))
+                    }
+                    delivered += count
+                }
+                if reader.status == .failed {
+                    throw MediaError.decodeFailed(name, detail: reader.error?.localizedDescription ?? "Decoding stopped early.")
+                }
+                reader.cancelReading()
+                return delivered
             }
-            delivered += count
+        } onCancel: {
+            flag.cancel()
         }
-        if reader.status == .failed {
-            throw MediaError.decodeFailed(name, detail: reader.error?.localizedDescription ?? "Decoding stopped early.")
-        }
-        reader.cancelReading()
-        return delivered
     }
 
     public static func decodeMono(_ url: URL, sampleRate: Double, maxSeconds: Double) async throws -> [Float] {
-        var samples: [Float] = []
-        try await stream(url, sampleRate: sampleRate, maxSeconds: maxSeconds) { samples.append(contentsOf: $0) }
-        return samples
+        let box = SampleBox()
+        try await stream(url, sampleRate: sampleRate, maxSeconds: maxSeconds) { box.samples.append(contentsOf: $0) }
+        return box.samples
     }
+
+    /// Holds samples while they are gathered on the decoding thread.
+    private final class SampleBox: @unchecked Sendable { var samples: [Float] = [] }
 }
 
 /// Peak envelope for drawing waveforms.
@@ -110,29 +151,33 @@ public struct Waveform: Sendable, Equatable {
 }
 
 public enum WaveformGenerator {
-    public static func generate(_ url: URL, peaksPerSecond: Double = 100) async throws -> Waveform {
-        let sampleRate = 8_000.0
-        let bucket = max(1, Int(sampleRate / peaksPerSecond))
+    private final class Accumulator: @unchecked Sendable {
         var peaks: [Float] = []
         var current: Float = 0
         var filled = 0
+    }
+
+    public static func generate(_ url: URL, peaksPerSecond: Double = 100) async throws -> Waveform {
+        let sampleRate = 8_000.0
+        let bucket = max(1, Int(sampleRate / peaksPerSecond))
+        let state = Accumulator()
         try await AudioDecoder.stream(url, sampleRate: sampleRate) { samples in
             var offset = 0
             while offset < samples.count {
-                let take = min(bucket - filled, samples.count - offset)
+                let take = min(bucket - state.filled, samples.count - offset)
                 var peak: Float = 0
                 if let base = samples.baseAddress { vDSP_maxmgv(base + offset, 1, &peak, vDSP_Length(take)) }
-                current = max(current, peak)
-                filled += take
+                state.current = max(state.current, peak)
+                state.filled += take
                 offset += take
-                if filled == bucket {
-                    peaks.append(min(1, current))
-                    current = 0
-                    filled = 0
+                if state.filled == bucket {
+                    state.peaks.append(min(1, state.current))
+                    state.current = 0
+                    state.filled = 0
                 }
             }
         }
-        if filled > 0 { peaks.append(min(1, current)) }
-        return Waveform(peaksPerSecond: sampleRate / Double(bucket), peaks: peaks)
+        if state.filled > 0 { state.peaks.append(min(1, state.current)) }
+        return Waveform(peaksPerSecond: sampleRate / Double(bucket), peaks: state.peaks)
     }
 }

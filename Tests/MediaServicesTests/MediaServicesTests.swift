@@ -138,6 +138,29 @@ struct AudioTests {
         #expect(abs(barPhase - barPhase.rounded()) * interval * 4 < 0.05, "bar start \(bar) is not on an accented beat")
     }
 
+    @Test func manyDecodesAtOnceNeverStarveTheTaskPool() async throws {
+        // Regression: synchronous AVFoundation reads on Swift's cooperative threads deadlocked once
+        // more decodes ran than the machine has cores (found on a small CI runner). 32 at once is
+        // more than any current Mac's core count.
+        let root = try mediaScratch()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("clicks.wav")
+        try SampleMedia.writeClickTrack(to: url, bpm: 120, seconds: 6)
+        let counts = try await withThrowingTaskGroup(of: Int.self) { group in
+            for _ in 0..<32 { group.addTask { try await AudioDecoder.decodeMono(url, sampleRate: 22_050, maxSeconds: 60).count } }
+            var all: [Int] = []
+            for try await count in group { all.append(count) }
+            return all
+        }
+        #expect(counts.count == 32)
+        #expect(counts.allSatisfy { abs($0 - 132_300) < 2_500 }, "every decode returns the whole six seconds")
+
+        // Cancelling a decode stops it promptly instead of leaving a thread reading.
+        let task = Task { try await AudioDecoder.decodeMono(url, sampleRate: 22_050, maxSeconds: 60) }
+        task.cancel()
+        _ = try? await task.value
+    }
+
     @Test func silenceAndShortClipsGiveNoBeats() async throws {
         #expect(BeatDetector.analyse(samples: [Float](repeating: 0, count: 22_050 * 5), sampleRate: 22_050) == .none)
         #expect(BeatDetector.analyse(samples: [0.1, 0.2], sampleRate: 22_050) == .none)

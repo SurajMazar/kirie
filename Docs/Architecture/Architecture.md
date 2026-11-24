@@ -81,6 +81,7 @@ For each frame the compositor walks the tracks bottom to top. On the main track,
 - UI state lives on the main actor (`EditorModel`, `AppModel`, `PlayerController`).
 - Import probing, thumbnails, waveforms, beat analysis, composition building and export run off the main thread and report back.
 - The compositor renders on its own serial queue. Export pumps video and audio on separate queues and is cancellable.
+- Blocking AVFoundation calls never run on Swift's cooperative thread pool. They go through `BlockingWork`, which uses a GCD queue; calling them from async code directly can deadlock the pool on machines with few cores.
 
 ## Security boundaries
 

@@ -37,7 +37,7 @@ open dist/Kirie.app
 
 ## Test results
 
-119 automated tests in 20 suites pass locally (Apple M4, macOS 26.5, Swift 6.3, Command Line Tools only). Full run: about 13 seconds.
+120 automated tests in 20 suites pass locally (Apple M4, macOS 26.5, Swift 6.3, Command Line Tools only). Full run: about 13 seconds.
 
 | Layer | What is covered |
 |---|---|
@@ -95,6 +95,10 @@ Not measured: memory use over long sessions, 4K or long-GOP source playback, sta
 - **Not sandboxed, ad-hoc signed.** See Docs/UserGuide/Building.md.
 - **Arm64 only.**
 - **The lyric styles use fonts that ship with macOS.** Import your own fonts for a closer match to a house style.
+
+## Found and fixed by CI
+
+The first CI run hung in the media tests. Cause: synchronous AVFoundation reads (`copyNextSampleBuffer`) were being called from async code, so each one held a thread of Swift's cooperative pool while waiting for work that AVFoundation schedules on that same pool. On the build machine (10 cores) five parallel decodes were harmless; on the smaller runner they used every pool thread and deadlocked. The same thing would have happened in the app when importing many audio files at once. Blocking media reads now run on a dedicated GCD queue (`BlockingWork`), and a test runs 32 decodes at once to keep it that way.
 
 ## Risks
 

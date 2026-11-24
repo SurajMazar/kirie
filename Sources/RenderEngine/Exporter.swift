@@ -450,19 +450,22 @@ public enum Exporter {
             throw RenderError.failed(reader.error?.localizedDescription ?? writer.error?.localizedDescription ?? "Audio export could not start.")
         }
         writer.startSession(atSourceTime: .zero)
-        while let sample = output.copyNextSampleBuffer() {
-            var waited = 0
-            while !input.isReadyForMoreMediaData {
-                guard writer.status == .writing, waited < 30_000 else {
-                    reader.cancelReading()
-                    writer.cancelWriting()
-                    try? FileManager.default.removeItem(at: partial)
-                    throw RenderError.failed(writer.error?.localizedDescription ?? "The audio encoder stopped accepting data.")
+        // The read-and-append loop blocks, so it runs off the cooperative pool.
+        try await BlockingWork.run {
+            while let sample = output.copyNextSampleBuffer() {
+                var waited = 0
+                while !input.isReadyForMoreMediaData {
+                    guard writer.status == .writing, waited < 30_000 else {
+                        reader.cancelReading()
+                        writer.cancelWriting()
+                        try? FileManager.default.removeItem(at: partial)
+                        throw RenderError.failed(writer.error?.localizedDescription ?? "The audio encoder stopped accepting data.")
+                    }
+                    usleep(1_000)
+                    waited += 1
                 }
-                try await Task.sleep(nanoseconds: 1_000_000)
-                waited += 1
+                guard input.append(sample) else { break }
             }
-            guard input.append(sample) else { break }
         }
         input.markAsFinished()
         await writer.finishWriting()
