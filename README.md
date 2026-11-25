@@ -51,6 +51,12 @@ Scripts/build-app.sh
 open dist/Kirie.app
 ```
 
+To install it into `/Applications`:
+
+```bash
+Scripts/install.sh
+```
+
 `Scripts/test.sh` runs the suite with Swift Testing and also works when only the Command Line Tools are installed. `Scripts/build-app.sh` produces `dist/Kirie.app`, ad-hoc signed, with the CLI inside it at `Contents/Helpers/kirie`.
 
 To try it without your own media, choose **Build the demo project** on the Home screen, or:

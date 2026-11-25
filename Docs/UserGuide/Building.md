@@ -45,7 +45,13 @@ Scripts/build-app.sh
 open dist/Kirie.app
 ```
 
-The script builds a release binary, creates `dist/Kirie.app` with its `Info.plist`, icon and document type, places the CLI in `Contents/Helpers`, and signs ad-hoc.
+To build and install into `/Applications` in one step:
+
+```bash
+Scripts/install.sh
+```
+
+The build script builds a release binary, creates `dist/Kirie.app` with its `Info.plist`, icon and document type, places the CLI in `Contents/Helpers`, and signs ad-hoc.
 
 Developer screenshot tool (renders each workspace to PNG and quits):
 
